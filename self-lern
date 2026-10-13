@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Self Lern: append-only learning file for Claude Code (never overwrite; optional chattr +a).
+
+Lerndatei: $SELF_LERN_DATEI, default ~/.claude/self-lern/LERNEN.md
+
+  self-lern eintrag --thema T --schief S --besser B --gut G --merke M   haengt einen Eintrag an
+  self-lern lesen [suchwort]                                         ganze Datei bzw. passende Eintraege
+  self-lern hook                                                     Kontext fuer SessionStart (Regeln + Merksaetze)
+"""
+import argparse, fcntl, os, re, sys, time
+
+DATEI = os.environ.get('SELF_LERN_DATEI') or os.path.expanduser('~/.claude/self-lern/LERNEN.md')
+MAX_MERKE = 40  # nur die letzten 40 Merksaetze in den Start-Kontext; aelteres per "self-lern lesen <wort>"
+
+
+def eintraege():
+    try:
+        text = open(DATEI, encoding='utf-8').read()
+    except FileNotFoundError:
+        return []
+    return [b for b in re.split(r'(?m)^(?=## )', text) if b.startswith('## ')]
+
+
+def eintrag(a):
+    felder = [a.thema, a.schief, a.besser, a.gut, a.merke]
+    if any(not f or not f.strip() for f in felder):
+        sys.exit('alle Felder ausfuellen (--thema --schief --besser --gut --merke)')
+    ein = lambda s: ' '.join(s.split())  # einzeilig, damit das Format stabil bleibt
+    block = (f"\n## {time.strftime('%Y-%m-%d %H:%M')} · {os.path.basename(os.getcwd()) or '/'} · {ein(a.thema)}\n"
+             f"- Schief gelaufen: {ein(a.schief)}\n- Besser machen: {ein(a.besser)}\n"
+             f"- Gut gelaufen: {ein(a.gut)}\n- Merke: {ein(a.merke)}\n")
+    os.makedirs(os.path.dirname(DATEI) or '.', exist_ok=True)
+    with open(DATEI, 'a', encoding='utf-8') as f:  # nur anhaengen
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(block)
+    print('Eintrag angehaengt:', DATEI)
+
+
+def lesen(wort):
+    if not os.path.exists(DATEI):
+        sys.exit('Lerndatei fehlt noch: ' + DATEI)
+    if not wort:
+        print(open(DATEI, encoding='utf-8').read())
+        return
+    treffer = [b for b in eintraege() if wort.lower() in b.lower()]
+    print(''.join(treffer) if treffer else f'keine Eintraege zu "{wort}"')
+
+
+def hook():
+    merke = []
+    for b in eintraege():
+        kopf = b.splitlines()[0][3:]
+        m = re.search(r'(?m)^- Merke: (.+)$', b)
+        if m:
+            merke.append(f'- {m.group(1)} ({kopf.split(" · ")[0][:10]}, {kopf.split(" · ")[-1]})')
+    print('SELF LERN aktiv (Skill self-lern, Datei ' + DATEI + '):\n'
+          '1. Vor einer Aufgabe: Merksaetze unten beachten; bei passendem Thema `self-lern lesen <stichwort>` fuer Details.\n'
+          '2. Nach jeder abgeschlossenen Aufgabe kurze Rueckschau und anhaengen: '
+          '`self-lern eintrag --thema ... --schief ... --besser ... --gut ... --merke ...` '
+          '(ehrlich, konkret, ohne Geheimnisse/Kundendaten; nichts Neues gelernt -> kein Eintrag). Die Datei nie ueberschreiben.\n'
+          + ('Merksaetze (neueste zuletzt):\n' + '\n'.join(merke[-MAX_MERKE:]) if merke else 'Noch keine Eintraege.'))
+
+
+def selbsttest():
+    global DATEI
+    import tempfile
+    DATEI = os.path.join(tempfile.mkdtemp(), 'LERNEN.md')
+    open(DATEI, 'w').write('# Kopf\n')
+    ns = argparse.Namespace(thema='Test', schief='a', besser='b\nzwei', gut='c', merke='erst lesen')
+    eintrag(ns); eintrag(ns)
+    assert len(eintraege()) == 2 and open(DATEI).read().startswith('# Kopf') and 'b zwei' in open(DATEI).read()
+    hook()  # darf nicht abstuerzen
+    os.unlink(DATEI)
+    os.rmdir(os.path.dirname(DATEI))
+    print('ok')
+
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser()
+    s = p.add_subparsers(dest='cmd', required=True)
+    e = s.add_parser('eintrag')
+    for f in ('thema', 'schief', 'besser', 'gut', 'merke'):
+        e.add_argument('--' + f, required=True)
+    s.add_parser('lesen').add_argument('wort', nargs='?')
+    s.add_parser('hook')
+    s.add_parser('selftest')
+    a = p.parse_args()
+    {'eintrag': lambda: eintrag(a), 'lesen': lambda: lesen(a.wort), 'hook': hook, 'selftest': selbsttest}[a.cmd]()
