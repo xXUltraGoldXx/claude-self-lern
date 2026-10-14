@@ -2,6 +2,15 @@
 
 Ein kleiner Claude-Code-Skill mit Hilfsskript: Claude führt eine **nur erweiterbare Lerndatei**. Nach jeder abgeschlossenen Aufgabe entsteht eine kurze Rückschau (was lief schief, was besser, was gut, eine Merkregel). Die Merkregeln werden bei jedem Sitzungsstart automatisch in den Kontext geladen – so wiederholt Claude Fehler seltener.
 
+## Installation über den Plugin-Marktplatz (empfohlen)
+
+```
+/plugin marketplace add xXUltraGoldXx/claude-plugins
+/plugin install self-lern@ultragold
+```
+
+Updates holt `/plugin marketplace update ultragold`. Die manuelle Installation unten bleibt als Alternative.
+
 ## English in short
 
 `claude-self-lern` gives Claude Code a persistent, append-only "lessons learned" file. A small Python script (`self-lern`) appends entries, searches them, and prints a SessionStart-hook text that injects the latest one-line rules into every new session. Only the Python standard library is needed (Linux/macOS). The file location is configurable via `SELF_LERN_DATEI` (default `~/.claude/self-lern/LERNEN.md`). Docs below are in German.
